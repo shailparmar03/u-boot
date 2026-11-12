@@ -538,6 +538,7 @@ int label_boot(struct pxe_context *ctx, struct pxe_label *label)
 	int len = 0;
 	ulong kernel_addr_r;
 	ulong kernel_size = 0;
+	ulong initrd_size = 0;
 	void *buf;
 
 	label_print(label);
@@ -591,6 +592,7 @@ int label_boot(struct pxe_context *ctx, struct pxe_label *label)
 			       label->name);
 			goto cleanup;
 		}
+		initrd_size = size;
 		strcpy(initrd_filesize, simple_xtoa(size));
 		initrd_addr_str = env_get("ramdisk_addr_r");
 		size = snprintf(initrd_str, sizeof(initrd_str), "%s:%lx",
@@ -807,13 +809,21 @@ int label_boot(struct pxe_context *ctx, struct pxe_label *label)
 	if (IS_ENABLED(CONFIG_CMD_BOOTEFI) &&
 	    efi_check_pe(buf, kernel_size, NULL) == EFI_SUCCESS) {
 		void *fdt = EFI_FDT_USE_INTERNAL;
+		void *initrd = NULL;
 		efi_status_t efi_ret;
 
 		log_debug("using bootefi\n");
 		if (bootm_argv[3])
 			fdt = map_sysmem(hextoul(bootm_argv[3], NULL), 0);
 
-		efi_ret = efi_binary_run(buf, kernel_size, fdt, NULL, 0);
+		if (initrd_size)
+			initrd = map_sysmem(hextoul(initrd_addr_str, NULL),
+					    initrd_size);
+
+		efi_ret = efi_binary_run(buf, kernel_size, fdt, initrd,
+					 initrd_size);
+		if (initrd)
+			unmap_sysmem(initrd);
 		if (efi_ret != EFI_SUCCESS)
 			log_err("efi_binary_run failed (ret=%lu)\n", efi_ret);
 	/* Try bootm for legacy and FIT format image */
